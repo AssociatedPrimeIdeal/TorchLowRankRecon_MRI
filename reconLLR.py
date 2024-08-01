@@ -47,9 +47,9 @@ def recon_LLR(A, Kv, method, llr, it, reg, blk, L=1., device='cuda', gt=None, sa
             axb = A.mtimes(X, 0) - Kv
             X = X - 1 / L * A.mtimes(axb, 1)
             if llr:
-                X, loss2 = SVT_LLR(X, reg, blk)
+                X, loss2 = SVT_LLR(X, reg / L, blk)
             else:
-                X, loss2 = SVT(X, reg)
+                X, loss2 = SVT(X, reg / L)
             if save_loss:
                 loss1 = torch.sum(torch.abs(A.mtimes(X, 0) - Kv) ** 2).item()
                 metrics['loss1'].append(loss1)
@@ -68,9 +68,9 @@ def recon_LLR(A, Kv, method, llr, it, reg, blk, L=1., device='cuda', gt=None, sa
             axb = A.mtimes(Y, 0) - Kv
             Y = Y - 1 / L * A.mtimes(axb, 1)
             if llr:
-                X, loss2 = SVT_LLR(Y, reg, blk)
+                X, loss2 = SVT_LLR(Y, reg / L, blk)
             else:
-                X, loss2 = SVT(Y, reg)
+                X, loss2 = SVT(Y, reg / L)
             Y = X + (tp - 1) / t * (X - Xp)
             Xp = X
             tp = t
