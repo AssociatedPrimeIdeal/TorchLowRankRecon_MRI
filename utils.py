@@ -66,7 +66,7 @@ def SoftThres(X, reg):
 
 def Sparse(S, reg, ax=(0, 1)):
     temp = SoftThres(i2k_torch(S, ax=ax), reg)
-    return k2i_torch(temp, ax=ax), torch.sum(torch.abs(temp))
+    return k2i_torch(temp, ax=ax), torch.sum(torch.abs(temp)).item()
 
 def GETWIDTH(M, N, B):
     temp = (np.sqrt(M) + np.sqrt(N))

@@ -27,6 +27,7 @@ def recon_LplusS(A, Kv, method, llr, it, regL, regS, blk, Lc=1., device='cuda', 
         metrics['psnr'] = []
         metrics['ssim'] = []
         metrics['nrmse'] = []
+
     if llr:
         stepx = np.ceil(FE / blk)
         stepy = np.ceil(PE / blk)
@@ -38,19 +39,20 @@ def recon_LplusS(A, Kv, method, llr, it, regL, regS, blk, Lc=1., device='cuda', 
         N = Nt * Np
         B = padx * pady * padz / M
         RF = GETWIDTH(M, N, B)
-        reg *= RF
+        regL *= RF
     else:
-        reg *= (np.sqrt(np.prod(Kv.shape[-3:])) + 1)
+        regL *= (np.sqrt(np.prod(Kv.shape[-3:])) + 1)
+
     if method == 'ISTA':
         X = A.mtimes(Kv, 1)
         L, Lp = X.clone(), X.clone()
         S = torch.zeros_like(X).to(device)
         for i in loop:
             if llr:
-                L, loss2 = SVT_LLR(X - S, regL, blk)
+                L, loss2 = SVT_LLR(X - S, regL / Lc, blk)
             else:
-                L, loss2 = SVT(X - S, regL)
-            S, loss3 = Sparse(X - Lp, regS)
+                L, loss2 = SVT(X - S, regL / Lc)
+            S, loss3 = Sparse(X - Lp, regS / Lc)
             axb = A.mtimes(L + S, 0) - Kv
             X = L + S - 1 / Lc * A.mtimes(axb, 1)
             Lp = L
@@ -72,17 +74,17 @@ def recon_LplusS(A, Kv, method, llr, it, regL, regS, blk, Lc=1., device='cuda', 
         for i in loop:
             t = (1 + np.sqrt(1 + 4 * tp ** 2)) / 2
             if llr:
-                L, loss2 = SVT_LLR(X, regL, blk)
+                L, loss2 = SVT_LLR(X - Sh, regL / Lc, blk)
             else:
-                L, loss2 = SVT(X, regL)
-            S, loss3 = Sparse(X - Lp, regS)
+                L, loss2 = SVT(X - Sh, regL / Lc)
+            S, loss3 = Sparse(X - Lh, regS / Lc)
             Lh = L + (tp - 1) / t * (L - Lp)
             Sh = S + (tp - 1) / t * (S - Sp)
             axb = A.mtimes(Lh + Sh, 0) - Kv
             X = Lh + Sh - 1 / Lc * A.mtimes(axb, 1)
+            tp = t
             Lp = L
             Sp = S
-            tp = t
             if save_loss:
                 loss1 = torch.sum(torch.abs(A.mtimes(X, 0) - Kv) ** 2).item()
                 metrics['loss1'].append(loss1)
@@ -95,32 +97,27 @@ def recon_LplusS(A, Kv, method, llr, it, regL, regS, blk, Lc=1., device='cuda', 
                 metrics['nrmse'].append(nRMSE(torch.abs(X), gt[0], use_torch=True).item())
     elif method == 'POGM':
         tp = 1
-        kp = 1
+        gp = 1
         X = A.mtimes(Kv, 1)
         L, L_, L_p, Lh, Lhp = X.clone(), X.clone(), X.clone(), X.clone(), X.clone()
         S, S_, S_p, Sh, Shp = torch.zeros_like(X).to(device), torch.zeros_like(X).to(device), torch.zeros_like(X).to(
-            device), \
-                              torch.zeros_like(X).to(device), torch.zeros_like(X).to(device)
+            device), torch.zeros_like(X).to(device), torch.zeros_like(X).to(device)
         for i in loop:
             Lh = X - S
             Sh = X - L
-            if i == it - 1:
-                t = (1 + np.sqrt(1 + 8 * tp ** 2)) / 2
-            else:
-                t = (1 + np.sqrt(1 + 4 * tp ** 2)) / 2
-            L_ = Lh + (tp - 1) / t * (Lh - Lhp) + tp / t * (Lh - L) + (tp - 1) / (kp * t) * 1 / Lc * (L_p - L)
-            S_ = Sh + (tp - 1) / t * (Sh - Shp) + tp / t * (Sh - S) + (tp - 1) / (kp * t) * 1 / Lc * (S_p - S)
-            k = 1 / Lc * (1 + (tp - 1) / t + tp / t)
+            t = (1 + np.sqrt(1 + 4 * tp ** 2)) / 2
+            L_ = Lh + (tp - 1) / t * (Lh - Lhp) + tp / t * (Lh - L) + (tp - 1) / (gp * t) * 1 / Lc * (L_p - L)
+            S_ = Sh + (tp - 1) / t * (Sh - Shp) + tp / t * (Sh - S) + (tp - 1) / (gp * t) * 1 / Lc * (S_p - S)
+            g = 1 / Lc * (1 + (tp - 1) / t + tp / t)
             if llr:
-                L, l2 = SVT_LLR(L_, regL, blk)
+                L, loss2 = SVT_LLR(L_, regL * g, blk)
             else:
-                L, l2 = SVT(L_, regL)
-            S, l3 = Sparse(S_, regS)
+                L, loss2 = SVT(L_, regL * g)
+            S, loss3 = Sparse(S_, regS * g)
             axb = A.mtimes(L + S, 0) - Kv
             X = L + S - 1 / Lc * A.mtimes(axb, 1)
-
             tp = t
-            kp = k
+            gp = g
             L_p = L_
             S_p = S_
             Lhp = Lh

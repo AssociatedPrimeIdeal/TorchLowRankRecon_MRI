@@ -29,3 +29,5 @@ https://web.eecs.umich.edu/~fessler/course/598/l/n-05-prox.pdf
 https://codeocean.com/capsule/0115983/tree/v1
 
 https://github.com/jinh0park/pytorch-ssim-3D
+
+https://ieeexplore.ieee.org/document/8540024

@@ -1,4 +1,5 @@
-from reconLLR import *
+from reconLLR import recon_LLR
+from reconLplusS import recon_LplusS
 from utils import *
 
 torch.set_num_threads(os.cpu_count())
@@ -19,7 +20,7 @@ def test_LLR():
     SNR = 40
     reg = 0.01
     blk = 16
-    L = 2
+    L = 1
 
     Nv, Np, Nt, Nc, FE, PE, SPE = K.shape
     sos = np.sqrt(np.sum(np.abs(csm) ** 2, axis=0, keepdims=True)) + 1e-11
@@ -44,12 +45,11 @@ def test_LLR():
     Knoise *= us_mask_gen
     img_noise = torch.as_tensor(np.ascontiguousarray(abs(img_noise))).to(torch.float32).to(device)
 
-    param_string = 'US Rate: {us_rate:.2f}_SNR: {SNR:d}_Iter Num: {it:d}_Reg: {reg:0.4f}_Block Size: {blk:d}'.format(
-        us_rate=us_rate, SNR=SNR, it=it, reg=reg, blk=blk)
+    param_string = param_string = 'US Rate: {us_rate:.2f}_SNR: {SNR:d}_Iter Num: {it:d}_Reg: {reg:0.4f}_Block Size: {blk:d}_Lip Constant: {L:d}'.format(
+                us_rate=us_rate, SNR=SNR, it=it, reg=reg, blk=blk, L=L)
     print(param_string)
 
-    methods = ['BART', 'POGM']
-    X = np.zeros((Nv, Np, Nt, FE, PE, SPE)).astype('complex64')
+    methods = ['BART', 'POGM', 'FISTA', 'ISTA']
     for v in range(Nv):
         print("#Velocity Encoding " + str(v + 1).zfill(3))
         for i, method in enumerate(methods):
@@ -64,11 +64,10 @@ def test_LLR():
                                     save_loss=True)
             if device == 'cuda' and method != 'BART':
                 Xv = Xv.cpu().numpy()
-            X[v] = Xv
             print("TIME COMSUMING:{:.2f}s".format(time.time() - st))
-            nrmse = nRMSE(np.abs(X), np.abs(img_gt.cpu().numpy()))
-            psnr = PSNR(np.abs(X), np.abs(img_gt.cpu().numpy()))
-            ssim = SSIM(np.abs(X), np.abs(img_gt.cpu().numpy()), device)
+            nrmse = nRMSE(np.abs(Xv), np.abs(img_gt[v].cpu().numpy()))
+            psnr = PSNR(np.abs(Xv), np.abs(img_gt[v].cpu().numpy()))
+            ssim = SSIM(np.expand_dims(np.abs(Xv),axis=0), np.abs(img_gt[v:v+1].cpu().numpy()), device)
             print("nRMSE:{:.4f}".format(nrmse))
             print("PSNR:{:.2f}".format(psnr))
             print("SSIM:{:.2f}".format(ssim))
@@ -106,9 +105,10 @@ def test_LplusS():
     llr = True
     it = 50
     SNR = 40
-    reg = 0.01
+    regL = 0.001
+    regS = 0.001
     blk = 16
-    L = 2
+    Lc = 2
 
     Nv, Np, Nt, Nc, FE, PE, SPE = K.shape
     sos = np.sqrt(np.sum(np.abs(csm) ** 2, axis=0, keepdims=True)) + 1e-11
@@ -133,12 +133,11 @@ def test_LplusS():
     Knoise *= us_mask_gen
     img_noise = torch.as_tensor(np.ascontiguousarray(abs(img_noise))).to(torch.float32).to(device)
 
-    param_string = 'US Rate: {us_rate:.2f}_SNR: {SNR:d}_Iter Num: {it:d}_Reg: {reg:0.4f}_Block Size: {blk:d}'.format(
-        us_rate=us_rate, SNR=SNR, it=it, reg=reg, blk=blk)
+    param_string = 'US Rate: {us_rate:.2f}_SNR: {SNR:d}_Iter Num: {it:d}_RegL: {regl:0.4f}_RegS: {regs:0.4f}_Block Size: {blk:d}_Lip Constant: {Lc:d}'.format(
+        us_rate=us_rate, SNR=SNR, it=it, regl=regL, regs=regS, blk=blk, Lc=Lc)
     print(param_string)
 
-    methods = ['BART', 'POGM']
-    X = np.zeros((Nv, Np, Nt, FE, PE, SPE)).astype('complex64')
+    methods = ['POGM', 'FISTA', 'ISTA']
     for v in range(Nv):
         print("#Velocity Encoding " + str(v + 1).zfill(3))
         for i, method in enumerate(methods):
@@ -149,41 +148,59 @@ def test_LplusS():
             rcomb = torch.sum(k2i_torch(Kv, ax=[-3, -2, -1]) * torch.conj(csm), 2)
             regFactor = torch.max(torch.abs(rcomb))
             Kv /= regFactor
-            Xv, metrics = recon_LLR(Eop(csm, us_mask), Kv, method, llr, it, reg, blk, device=device, L=L, gt=img_gt,
+            Xv, Lv, Sv, metrics = recon_LplusS(Eop(csm, us_mask), Kv, method, llr, it, regL, regS, blk, device=device, Lc=Lc, gt=img_gt,
                                     save_loss=True)
             if device == 'cuda' and method != 'BART':
                 Xv = Xv.cpu().numpy()
-            X[v] = Xv
+                Lv = Lv.cpu().numpy()
+                Sv = Sv.cpu().numpy()
             print("TIME COMSUMING:{:.2f}s".format(time.time() - st))
-            nrmse = nRMSE(np.abs(X), np.abs(img_gt.cpu().numpy()))
-            psnr = PSNR(np.abs(X), np.abs(img_gt.cpu().numpy()))
-            ssim = SSIM(np.abs(X), np.abs(img_gt.cpu().numpy()), device)
+            nrmse = nRMSE(np.abs(Xv), np.abs(img_gt[v].cpu().numpy()))
+            psnr = PSNR(np.abs(Xv), np.abs(img_gt[v].cpu().numpy()))
+            ssim = SSIM(np.expand_dims(np.abs(Xv),axis=0), np.abs(img_gt[v:v+1].cpu().numpy()), device)
             print("nRMSE:{:.4f}".format(nrmse))
             print("PSNR:{:.2f}".format(psnr))
             print("SSIM:{:.2f}".format(ssim))
-            plt.figure(figsize=(20, 5))
-            plt.subplot(1, 4, 1)
+            plt.figure(figsize=(15, 5))
+            plt.subplot(2, 3, 1)
             plt.imshow(abs(img_gt[v, 0, Nt // 2, :, :, SPE // 2]).cpu().numpy(), cmap='gray',
                        origin='lower',
                        norm=matplotlib.colors.Normalize(0, 1))
             plt.title("Ground Truth")
             plt.axis('off')
-            plt.subplot(1, 4, 2)
+            plt.subplot(2, 3, 2)
             plt.imshow(abs(img_noise[v, 0, Nt // 2, :, :, SPE // 2]).cpu().numpy(), cmap='gray',
                        origin='lower',
                        norm=matplotlib.colors.Normalize(0, 1))
             plt.title("Noisy img")
-            plt.subplot(1, 4, 3)
-            plt.imshow(abs(Xv[0, Nt//2, :, :, SPE // 2]), cmap='gray',
-                                origin='lower',
-                                norm=matplotlib.colors.Normalize(0, 1))
-            plt.title(method)
-            plt.subplot(1, 4, 4)
-            plt.imshow(abs(abs(Xv[0, Nt//2, :, :, SPE // 2]) - abs(img_gt[v, 0, Nt//2, :, :, SPE // 2]).cpu().numpy()), cmap='gray',
-                                origin='lower',
-                                norm=matplotlib.colors.Normalize(0, 0.3))
+
+            plt.subplot(2, 3, 3)
+            plt.imshow(
+                abs(abs(Xv[0, Nt // 2, :, :, SPE // 2]) - abs(img_gt[v, 0, Nt // 2, :, :, SPE // 2]).cpu().numpy()),
+                cmap='gray',
+                origin='lower',
+                norm=matplotlib.colors.Normalize(0, 0.3))
             plt.title("Difference")
+
+            plt.subplot(2, 3, 4)
+            plt.imshow(abs(Xv[0, Nt // 2, :, :, SPE // 2]), cmap='gray',
+                       origin='lower',
+                       norm=matplotlib.colors.Normalize(0, 1))
+            plt.title('X')
+
+            plt.subplot(2, 3, 5)
+            plt.imshow(abs(Lv[0, Nt // 2, :, :, SPE // 2]), cmap='gray',
+                       origin='lower',
+                       norm=matplotlib.colors.Normalize(0, 1))
+            plt.title('L')
+
+            plt.subplot(2, 3, 6)
+            plt.imshow(abs(Sv[0, Nt // 2, :, :, SPE // 2]), cmap='gray',
+                       origin='lower',
+                       norm=matplotlib.colors.Normalize(0, 1))
+            plt.title('S')
             plt.show()
 
 if __name__ == '__main__':
     test_LLR()
+    test_LplusS()
