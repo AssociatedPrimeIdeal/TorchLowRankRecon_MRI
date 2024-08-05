@@ -9,7 +9,7 @@ np.random.seed(seed)
 random.seed(seed)
 
 def test_LLR():
-    data = np.load('/nas-data/xcat2/res2/data_xcat_res2.npy', allow_pickle=True).item()
+    data = np.load('/nas-data/xcat2/res2/data_xcat_res2d5.npy', allow_pickle=True).item()
     K = data['kspc']
     csm = data['sens']
     device = 'cuda'
@@ -18,7 +18,7 @@ def test_LLR():
     llr = True
     it = 50
     SNR = 40
-    reg = 0.01
+    reg = 0.005
     blk = 16
     L = 1
 
@@ -49,7 +49,7 @@ def test_LLR():
                 us_rate=us_rate, SNR=SNR, it=it, reg=reg, blk=blk, L=L)
     print(param_string)
 
-    methods = ['BART', 'POGM', 'FISTA', 'ISTA']
+    methods = ['POGM', 'FISTA', 'ISTA']
     for v in range(Nv):
         print("#Velocity Encoding " + str(v + 1).zfill(3))
         for i, method in enumerate(methods):
@@ -96,7 +96,7 @@ def test_LLR():
             plt.show()
 
 def test_LplusS():
-    data = np.load('/nas-data/xcat2/res2/data_xcat_res2.npy', allow_pickle=True).item()
+    data = np.load('/nas-data/xcat2/res2/data_xcat_res2d5.npy', allow_pickle=True).item()
     K = data['kspc']
     csm = data['sens']
     device = 'cuda'
@@ -105,8 +105,8 @@ def test_LplusS():
     llr = True
     it = 50
     SNR = 40
-    regL = 0.001
-    regS = 0.001
+    regL = 0.005
+    regS = 0.005
     blk = 16
     Lc = 2
 
