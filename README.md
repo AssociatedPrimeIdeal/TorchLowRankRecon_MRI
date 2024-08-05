@@ -5,10 +5,8 @@ This is a low-rank &amp; low-rank plus sparse reconstruction algorithm implement
 - PyTorch 
 - NumPy
 - bart 
-- time
 - argparse
 - tqdm
-- random
 - matplotlib
 
 ## Usage
